@@ -30,20 +30,51 @@ export default function Auth({ onAuthenticated }) {
         });
         if (error) throw error;
         onAuthenticated();
+  
       } else {
         const { data, error } = await supabase.auth.signUp({
           email,
           password,
         });
+
         if (error) throw error;
 
-        if (data.session) {
-          onAuthenticated();
-        } else {
-          setMessage("Registration received. Check your email to confirm your account, then sign in.");
-          setMode("login");
+        if (data.user) {
+          // Save the user's profile in the database.
+          // The email may be unconfirmed, so the profile insert
+          // will happen after authentication if no session exists.
+          if (data.session) {
+            const { error: profileError } = await supabase
+              .from("profiles")
+              .upsert(
+                {
+                  id: data.user.id,
+                  email: data.user.email,
+                },
+                { onConflict: "id" }
+              );
+
+            if (profileError) {
+              console.error(
+                "Profile save failed:",
+                profileError.message
+              );
+              throw new Error(
+                "Account created, but profile saving failed: " +
+                  profileError.message
+              );
+            }
+
+            onAuthenticated();
+          } else {
+            setMessage(
+              "Registration received. Check your email to confirm your account, then sign in."
+            );
+            setMode("login");
+          }
         }
       }
+      
     } catch (error) {
       setMessage(error.message || "Authentication failed. Please try again.");
     } finally {
